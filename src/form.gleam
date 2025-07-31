@@ -32,8 +32,8 @@ fn middleware(
 fn handle_request(req: wisp.Request) -> wisp.Response {
   use req <- middleware(req)
   case req.method, wisp.path_segments(req) {
-    http.Get, ["api", "v1", "room", id] -> handle_get_room(req, id)
     http.Post, ["api", "v1", "room"] -> handle_create_room(req)
+    http.Get, ["api", "v1", "room", id] -> handle_get_room(req, id)
     http.Post, ["api", "v1", "room", id, "response"] ->
       handle_post_response(req, id)
 
@@ -41,11 +41,11 @@ fn handle_request(req: wisp.Request) -> wisp.Response {
   }
 }
 
-fn handle_get_room(req: wisp.Request, id: string) -> wisp.Response {
+fn handle_create_room(req: wisp.Request) -> wisp.Response {
   todo
 }
 
-fn handle_create_room(req: wisp.Request) -> wisp.Response {
+fn handle_get_room(req: wisp.Request, id: string) -> wisp.Response {
   todo
 }
 
