@@ -16,7 +16,15 @@ pub fn main() -> Nil {
       CREATE TABLE forms (
         id TEXT PRIMARY KEY,
         prompt TEXT
-      )
+      );
+
+      CREATE TABLE responses (
+        id TEXT PRIMARY KEY,
+        form_id TEXT NOT NULL,
+        response TEXT NOT NULL,
+
+        FOREIGN KEY (form_id) REFERENCES forms(id)
+      );
       ",
       conn,
     )
