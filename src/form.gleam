@@ -1,3 +1,4 @@
+import gleam/dynamic/decode
 import gleam/erlang/process
 import gleam/http
 import gleam/io
@@ -67,6 +68,26 @@ fn handle_create_room(
   conn: sqlight.Connection,
   req: wisp.Request,
 ) -> wisp.Response {
+  use json <- wisp.require_json(req)
+
+  let decoder = {
+    use prompt <- decode.field("prompt", decode.string)
+    decode.success(prompt)
+  }
+  use prompt <- decode.run(json, decoder)
+
+  let decoder = {
+    use id <- decode.field(0, decode.string)
+    use prompt <- decode.field(1, decode.string)
+    decode.success(#(id, prompt))
+  }
+  let _ =
+    sqlight.query(
+      "INSERT INTO forms (prompt) RETURNING (id, prompt);",
+      conn,
+      [prompt],
+      decoder,
+    )
   todo
 }
 
