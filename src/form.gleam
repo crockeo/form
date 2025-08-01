@@ -1,23 +1,38 @@
 import gleam/erlang/process
 import gleam/http
 import gleam/io
+import gleam/result
 import mist
+import sqlight
 import wisp
 import wisp/wisp_mist
+
+import uuid
 
 pub fn main() -> Nil {
   wisp.configure_logger()
 
+  use conn <- sqlight.with_connection(":memory:")
+  let assert Ok(_) =
+    sqlight.exec(
+      "
+      CREATE TABLE forms (
+        id TEXT PRIMARY KEY,
+        prompt TEXT
+      )
+      ",
+      conn,
+    )
+
   let secret_key_base = wisp.random_string(64)
   let assert Ok(_) =
-    wisp_mist.handler(handle_request, secret_key_base)
+    wisp_mist.handler(handle_request(conn), secret_key_base)
     |> mist.new
     |> mist.port(8000)
     |> mist.start
 
+  io.println("Listening on :8000")
   process.sleep_forever()
-
-  io.println("Hello from form!")
 }
 
 fn middleware(
@@ -29,26 +44,39 @@ fn middleware(
   next(req)
 }
 
-fn handle_request(req: wisp.Request) -> wisp.Response {
-  use req <- middleware(req)
-  case req.method, wisp.path_segments(req) {
-    http.Post, ["api", "v1", "room"] -> handle_create_room(req)
-    http.Get, ["api", "v1", "room", id] -> handle_get_room(req, id)
-    http.Post, ["api", "v1", "room", id, "response"] ->
-      handle_post_response(req, id)
+fn handle_request(conn: sqlight.Connection) -> fn(wisp.Request) -> wisp.Response {
+  fn(req: wisp.Request) -> wisp.Response {
+    use req <- middleware(req)
+    case req.method, wisp.path_segments(req) {
+      http.Post, ["api", "v1", "room"] -> handle_create_room(conn, req)
+      http.Get, ["api", "v1", "room", id] -> handle_get_room(conn, req, id)
+      http.Post, ["api", "v1", "room", id, "response"] ->
+        handle_post_response(conn, req, id)
 
-    _, _ -> wisp.not_found()
+      _, _ -> wisp.not_found()
+    }
   }
 }
 
-fn handle_create_room(req: wisp.Request) -> wisp.Response {
+fn handle_create_room(
+  conn: sqlight.Connection,
+  req: wisp.Request,
+) -> wisp.Response {
   todo
 }
 
-fn handle_get_room(req: wisp.Request, id: string) -> wisp.Response {
+fn handle_get_room(
+  conn: sqlight.Connection,
+  req: wisp.Request,
+  id: string,
+) -> wisp.Response {
   todo
 }
 
-fn handle_post_response(req: wisp.Request, id: string) -> wisp.Response {
+fn handle_post_response(
+  conn: sqlight.Connection,
+  req: wisp.Request,
+  id: string,
+) -> wisp.Response {
   todo
 }
