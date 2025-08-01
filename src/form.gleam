@@ -1,13 +1,10 @@
 import gleam/erlang/process
 import gleam/http
 import gleam/io
-import gleam/result
 import mist
 import sqlight
 import wisp
 import wisp/wisp_mist
-
-import uuid
 
 pub fn main() -> Nil {
   wisp.configure_logger()
