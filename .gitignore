@@ -1,4 +1,7 @@
 *.beam
 *.ez
 /build
-erl_crash.dump
+/database.db
+/erl_crash.dump
+/form
+/form.db
