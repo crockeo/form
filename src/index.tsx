@@ -1,7 +1,7 @@
 /* @refresh reload */
 import "./index.css";
-import { render } from "solid-js/web";
 import { Route, Router } from "@solidjs/router";
+import { render } from "solid-js/web";
 
 import App from "./App";
 import Form from "./Form";
@@ -9,17 +9,18 @@ import Form from "./Form";
 const root = document.getElementById("root");
 
 if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
-	throw new Error(
-		"Root element not found. Did you forget to add it to your index.html? Or maybe the id attribute got misspelled?",
-	);
+  throw new Error(
+    "Root element not found. Did you forget to add it to your index.html? Or maybe the id attribute got misspelled?",
+  );
 }
 
 render(
-	() => (
-		<Router>
-			<Route path="/" component={App} />
-			<Route path="/:id" component={Form} />
-		</Router>
-	),
-	root!,
+  () => (
+    <Router>
+      <Route path="/" component={App} />
+      <Route path="/:id" component={Form} />
+    </Router>
+  ),
+  // biome-ignore lint/style/noNonNullAssertion: vibes
+  root!,
 );
