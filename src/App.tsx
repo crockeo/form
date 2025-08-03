@@ -1,6 +1,8 @@
+import { useNavigate } from "@solidjs/router";
 import { createSignal, type Component } from "solid-js";
 
 const App: Component = () => {
+	const navigate = useNavigate();
 	const [prompt, setPrompt] = createSignal("");
 	const disabled = () => prompt() === "";
 
@@ -43,7 +45,7 @@ const App: Component = () => {
 			return;
 		}
 		const body = await res.json();
-		console.log(body);
+		navigate(`/${body.id}`);
 	}
 };
 

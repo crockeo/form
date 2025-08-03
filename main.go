@@ -133,7 +133,7 @@ func getForm(db *gorm.DB) gin.HandlerFunc {
 }
 
 type PostResponseRequest struct {
-	Text string
+	Text string `json:"text"`
 }
 
 func postResponse(db *gorm.DB) gin.HandlerFunc {
