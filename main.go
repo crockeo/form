@@ -1,9 +1,16 @@
 package main
 
 import (
+	"errors"
+	"fmt"
 	"log"
+	"net/http"
+	"os"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -25,6 +32,11 @@ type Response struct {
 	Text   string
 }
 
+type AppContext struct {
+	db              *gorm.DB
+	jwtSigningToken []byte
+}
+
 func main() {
 	if err := mainImpl(); err != nil {
 		log.Fatal(err)
@@ -32,6 +44,18 @@ func main() {
 }
 
 func mainImpl() error {
+	env, err := os.ReadFile(".env")
+	if err != nil {
+		return err
+	}
+	for line := range strings.Lines(string(env)) {
+		line = strings.TrimSpace(line)
+		parts := strings.SplitN(line, "=", 2)
+		key := parts[0]
+		value := parts[1]
+		os.Setenv(key, value)
+	}
+
 	db, err := gorm.Open(sqlite.Open("form.db"), &gorm.Config{})
 	if err != nil {
 		return err
@@ -40,11 +64,18 @@ func mainImpl() error {
 		return err
 	}
 
+	jwtSigningToken := os.Getenv("JWT_SIGNING_TOKEN")
+	if jwtSigningToken == "" {
+		return fmt.Errorf("JWT_SIGNING_TOKEN missing")
+	}
+
+	ctx := &AppContext{db: db, jwtSigningToken: []byte(jwtSigningToken)}
+
 	engine := gin.Default()
 
-	engine.POST("/api/v1/form", createForm(db))
-	engine.GET("/api/v1/form/:id", getForm(db))
-	engine.POST("/api/v1/form/:id/response", postResponse(db))
+	engine.POST("/api/v1/form", createForm(ctx))
+	engine.GET("/api/v1/form/:id", getForm(ctx))
+	engine.POST("/api/v1/form/:id/response", postResponse(ctx))
 
 	log.Print("Listening on 127.0.0.1:8000")
 	engine.Run("127.0.0.1:8000")
@@ -60,8 +91,15 @@ type CreateFormResponse struct {
 	Prompt string `json:"prompt"`
 }
 
-func createForm(db *gorm.DB) gin.HandlerFunc {
+func createForm(ctx *AppContext) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		identity, err := getOrCreateIdentity(c, ctx.jwtSigningToken)
+		if err != nil {
+			c.Error(err)
+			return
+		}
+		_ = identity
+
 		req := CreateFormRequest{}
 		if err := c.BindJSON(&req); err != nil {
 			c.Error(err)
@@ -78,7 +116,7 @@ func createForm(db *gorm.DB) gin.HandlerFunc {
 			ID:     id.String(),
 			Prompt: req.Prompt,
 		}
-		if err := gorm.G[Form](db).Create(c.Request.Context(), &form); err != nil {
+		if err := gorm.G[Form](ctx.db).Create(c.Request.Context(), &form); err != nil {
 			c.Error(err)
 			return
 		}
@@ -102,10 +140,17 @@ type FormResponseEntry struct {
 	Text string `json:"text"`
 }
 
-func getForm(db *gorm.DB) gin.HandlerFunc {
+func getForm(ctx *AppContext) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		identity, err := getOrCreateIdentity(c, ctx.jwtSigningToken)
+		if err != nil {
+			c.Error(err)
+			return
+		}
+		_ = identity
+
 		id := c.Params[0].Value
-		form, err := gorm.G[Form](db).Where("id = ?", id).Preload("Responses", func(db gorm.PreloadBuilder) error {
+		form, err := gorm.G[Form](ctx.db).Where("id = ?", id).Preload("Responses", func(db gorm.PreloadBuilder) error {
 			return nil
 		}).First(c.Request.Context())
 		if err != nil {
@@ -136,8 +181,15 @@ type PostResponseRequest struct {
 	Text string `json:"text"`
 }
 
-func postResponse(db *gorm.DB) gin.HandlerFunc {
+func postResponse(ctx *AppContext) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		identity, err := getOrCreateIdentity(c, ctx.jwtSigningToken)
+		if err != nil {
+			c.Error(err)
+			return
+		}
+		_ = identity
+
 		req := PostResponseRequest{}
 		if err := c.BindJSON(&req); err != nil {
 			c.Error(err)
@@ -145,7 +197,7 @@ func postResponse(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		id := c.Params[0].Value
-		form, err := gorm.G[Form](db).Where("id = ?", id).Preload("Responses", func(db gorm.PreloadBuilder) error {
+		form, err := gorm.G[Form](ctx.db).Where("id = ?", id).Preload("Responses", func(db gorm.PreloadBuilder) error {
 			return nil
 		}).First(c.Request.Context())
 		if err != nil {
@@ -165,7 +217,7 @@ func postResponse(db *gorm.DB) gin.HandlerFunc {
 			Text:   req.Text,
 		}
 
-		if err := gorm.G[Response](db).Create(c.Request.Context(), &newResponse); err != nil {
+		if err := gorm.G[Response](ctx.db).Create(c.Request.Context(), &newResponse); err != nil {
 			c.Error(err)
 			return
 		}
@@ -188,4 +240,53 @@ func postResponse(db *gorm.DB) gin.HandlerFunc {
 			},
 		)
 	}
+}
+
+func getOrCreateIdentity(c *gin.Context, jwtSigningToken []byte) (string, error) {
+	identityRaw, err := c.Cookie("identity")
+	if errors.Is(err, http.ErrNoCookie) {
+		identity, signedString, err := newIdentityToken(jwtSigningToken)
+		if err != nil {
+			return "", err
+		}
+		c.SetCookie("identity", signedString, 0, "/", "localhost", true, true)
+		return identity, nil
+	} else if err != nil {
+		return "", err
+	}
+
+	token, err := jwt.Parse(
+		identityRaw,
+		func(token *jwt.Token) (any, error) {
+			return jwtSigningToken, nil
+		},
+		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+	)
+	if err != nil {
+		return "", err
+	}
+
+	audience, err := token.Claims.GetAudience()
+	if err != nil {
+		return "", err
+	}
+	return audience[0], nil
+}
+
+func newIdentityToken(jwtSigningToken []byte) (string, string, error) {
+	uuid, err := uuid.NewV7()
+	if err != nil {
+		return "", "", err
+	}
+	now := time.Now()
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, &jwt.RegisteredClaims{
+		Audience: []string{uuid.String()},
+		IssuedAt: jwt.NewNumericDate(now),
+		Issuer:   "form",
+	})
+	signedString, err := token.SignedString(jwtSigningToken)
+	if err != nil {
+		return "", "", err
+	}
+	return uuid.String(), signedString, nil
 }
