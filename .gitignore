@@ -21,6 +21,7 @@
 .netlify
 .vinxi
 app.config.timestamp_*.js
+dist/
 
 # Environment
 .env
