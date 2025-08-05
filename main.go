@@ -61,6 +61,16 @@ func mainImpl() error {
 		return fmt.Errorf("JWT_SIGNING_TOKEN missing")
 	}
 
+	addr := os.Getenv("ADDR")
+	if addr == "" {
+		addr = "127.0.0.1"
+	}
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8000"
+	}
+
 	ctx := &AppContext{db: db, jwtSigningToken: []byte(jwtSigningToken)}
 
 	engine := gin.Default()
@@ -70,8 +80,9 @@ func mainImpl() error {
 	engine.GET("/api/v1/form/:id", getForm(ctx))
 	engine.POST("/api/v1/form/:id/response", postResponse(ctx))
 
-	log.Print("Listening on 127.0.0.1:8000")
-	engine.Run("127.0.0.1:8000")
+	bind := fmt.Sprintf("%s:%s", addr, port)
+	log.Printf("Listening on %s", bind)
+	engine.Run(bind)
 	return nil
 }
 
