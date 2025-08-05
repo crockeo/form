@@ -44,16 +44,8 @@ func main() {
 }
 
 func mainImpl() error {
-	env, err := os.ReadFile(".env")
-	if err != nil {
+	if err := loadEnv(); err != nil {
 		return err
-	}
-	for line := range strings.Lines(string(env)) {
-		line = strings.TrimSpace(line)
-		parts := strings.SplitN(line, "=", 2)
-		key := parts[0]
-		value := parts[1]
-		os.Setenv(key, value)
 	}
 
 	db, err := gorm.Open(sqlite.Open("form.db"), &gorm.Config{})
@@ -72,6 +64,7 @@ func mainImpl() error {
 	ctx := &AppContext{db: db, jwtSigningToken: []byte(jwtSigningToken)}
 
 	engine := gin.Default()
+	engine.Use(identityMiddleware(ctx))
 
 	engine.POST("/api/v1/form", createForm(ctx))
 	engine.GET("/api/v1/form/:id", getForm(ctx))
@@ -79,6 +72,21 @@ func mainImpl() error {
 
 	log.Print("Listening on 127.0.0.1:8000")
 	engine.Run("127.0.0.1:8000")
+	return nil
+}
+
+func loadEnv() error {
+	env, err := os.ReadFile(".env")
+	if err != nil {
+		return err
+	}
+	for line := range strings.Lines(string(env)) {
+		line = strings.TrimSpace(line)
+		parts := strings.SplitN(line, "=", 2)
+		key := parts[0]
+		value := parts[1]
+		os.Setenv(key, value)
+	}
 	return nil
 }
 
@@ -91,15 +99,20 @@ type CreateFormResponse struct {
 	Prompt string `json:"prompt"`
 }
 
-func createForm(ctx *AppContext) gin.HandlerFunc {
+func identityMiddleware(ctx *AppContext) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		identity, err := getOrCreateIdentity(c, ctx.jwtSigningToken)
 		if err != nil {
 			c.Error(err)
 			return
 		}
-		_ = identity
+		c.Set("identity", identity)
+		c.Next()
+	}
+}
 
+func createForm(ctx *AppContext) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		req := CreateFormRequest{}
 		if err := c.BindJSON(&req); err != nil {
 			c.Error(err)
@@ -142,13 +155,6 @@ type FormResponseEntry struct {
 
 func getForm(ctx *AppContext) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		identity, err := getOrCreateIdentity(c, ctx.jwtSigningToken)
-		if err != nil {
-			c.Error(err)
-			return
-		}
-		_ = identity
-
 		id := c.Params[0].Value
 		form, err := gorm.G[Form](ctx.db).Where("id = ?", id).Preload("Responses", func(db gorm.PreloadBuilder) error {
 			return nil
@@ -183,13 +189,6 @@ type PostResponseRequest struct {
 
 func postResponse(ctx *AppContext) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		identity, err := getOrCreateIdentity(c, ctx.jwtSigningToken)
-		if err != nil {
-			c.Error(err)
-			return
-		}
-		_ = identity
-
 		req := PostResponseRequest{}
 		if err := c.BindJSON(&req); err != nil {
 			c.Error(err)
